@@ -1,6 +1,15 @@
+import java.io.File;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.io.file.PathUtil;
+import cn.hutool.core.io.resource.ResourceUtil;
+
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.Properties;
 
 /**
  * 用户信息
@@ -12,10 +21,31 @@ public class UserConfig {
     public static final String cityId = "0101";//默认上海
 
     //站点id
-    public static final String stationId = "";
+    public static String stationId;
 
     //收货地址id
-    public static final String addressId = "";
+    public static String addressId;
+
+
+    public static String path = "/Users/rico/gits/life/dingdong-helper/src/main/resources/properties.properties";
+    static Properties properties = new Properties();
+
+    static {
+        try {
+            if (PathUtil.exists(Paths.get(path), false)) {
+                System.out.println(" =====load file======");
+                properties.load(FileUtil.getInputStream(path));
+            } else {
+                System.out.println(" =====load resources======");
+                properties.load(ResourceUtil.getStream("properties.properties"));
+            }
+            stationId = properties.getProperty("stationId");
+            addressId = properties.getProperty("addressId");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        System.out.println(properties.stringPropertyNames());
+    }
 
     /**
      * 确认收货地址id和站点id
@@ -43,12 +73,12 @@ public class UserConfig {
         headers.put("referer", "https://servicewechat.com/wx1e113254eda17715/425/page-frame.html");
 
         // ------------  填入以下6项 上面不要动 ------------
-        headers.put("ddmc-device-id", "");
-        headers.put("cookie", "");
-        headers.put("ddmc-longitude", "");
-        headers.put("ddmc-latitude", "");
-        headers.put("ddmc-uid", "");
-        headers.put("user-agent", "");
+        headers.put("ddmc-device-id", properties.getProperty("ddmc-device-id"));
+        headers.put("cookie", properties.getProperty("cookie"));
+        headers.put("ddmc-longitude", properties.getProperty("ddmc-longitude"));
+        headers.put("ddmc-latitude", properties.getProperty("ddmc-latitude"));
+        headers.put("ddmc-uid", properties.getProperty("ddmc-uid"));
+        headers.put("user-agent", properties.getProperty("user-agent"));
         return headers;
     }
 
@@ -74,9 +104,9 @@ public class UserConfig {
         body.put("time", headers.get("ddmc-time"));
         body.put("openid", headers.get("ddmc-device-id"));
 
-        // ------------  填入这2项上面不要动 ------------
-        body.put("s_id", "");
-        body.put("device_token", "");
+        // ------------  填入这3项上面不要动 ------------
+        body.put("s_id", properties.getProperty("s_id"));
+        body.put("device_token", properties.getProperty("device_token"));
         return body;
     }
 }

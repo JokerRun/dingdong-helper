@@ -1,4 +1,5 @@
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONArray;
@@ -49,7 +50,7 @@ public class Api {
                     }
                     return body;
                 }
-                engine.eval(FileUtil.readString(new File("sign.js"), "UTF-8"));
+                engine.eval(ResourceUtil.readUtf8Str("sign.js"));
                 invocable = (Invocable) engine;
             }
             Object object = invocable.invokeFunction("sign", JSONUtil.toJsonStr(body));

@@ -23,6 +23,7 @@ target/
 /nbproject/private/
 /nbbuild/
 /dist/
+!/dist/**.sh
 /nbdist/
 /.nb-gradle/
 build/
@@ -33,3 +34,4 @@ build/
 .vscode/
 user-config.txt
 .run/
+/src/main/resources/properties.properties
