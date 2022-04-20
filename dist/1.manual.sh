@@ -1,0 +1,1 @@
+java -jar ./dingdong-helper-1.0.0.jar 1
