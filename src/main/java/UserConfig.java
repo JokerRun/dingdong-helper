@@ -70,7 +70,7 @@ public class UserConfig {
         headers.put("ddmc-ip", "");
         headers.put("ddmc-api-version", "9.50.0");
         headers.put("accept-encoding", "gzip,compress,br,deflate");
-        headers.put("referer", "https://servicewechat.com/wx1e113254eda17715/425/page-frame.html");
+        headers.put("referer", "https://servicewechat.com/wx1e113254eda17715/432/page-frame.html");
 
         // ------------  填入以下6项 上面不要动 ------------
         headers.put("ddmc-device-id", properties.getProperty("ddmc-device-id"));

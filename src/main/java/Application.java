@@ -10,6 +10,11 @@ import java.util.Map;
 public class Application {
 
 
+    private static final String END = "end";
+    private static final String CART_MAP = "cartMap";
+    private static final String MULTI_RESERVE_TIME_MAP = "multiReserveTimeMap";
+    private static final String CHECK_ORDER_MAP = "checkOrderMap";
+
     public static void sleep(int millis) {
         try {
             Thread.sleep(millis);
@@ -39,7 +44,7 @@ public class Application {
         int policy = Integer.parseInt(args.length > 0 ? args[0] : "1");//默认人工模式
         System.out.println("当前模式:" + policy);
         boolean noProductsContinue = true; // policy == 2 || policy == 3
-//        boolean noProductsContinue = policy == 2 || policy == 3; //
+        //boolean noProductsContinue = policy == 2 || policy == 3; //
         //最小订单成交金额 举例如果设置成50 那么订单要超过50才会下单
         double minOrderPrice = 0;
 
@@ -66,82 +71,113 @@ public class Application {
 
 
         //保护线程 2分钟未下单自动终止 避免对叮咚服务器造成压力 也避免封号  如果想长时间执行 请使用Sentinel哨兵模式
-        new Thread(() -> {
-            for (int i = 0; i < 120 && !Api.context.containsKey("end"); i++) {
-                sleep(1000);
-            }
-            if (!Api.context.containsKey("end")) {
-                Api.context.put("end", new HashMap<>());
-                sleep(3000);
-                System.err.println("未成功下单，执行2分钟自动停止");
-            }
-        }).start();
+        autoStopThread();
+        // 启动baseTheadSize条线程，每3-5秒执行一次allCheck接口(勾选购物车全选按钮)
+        allCheckThread(baseTheadSize);
+        // 启动baseTheadSize条线程，每300-500ms获取购物车信息，并Api.context.put("cartMap", cartMap);写入上下文中
+        getCartThread(noProductsContinue, minOrderPrice, baseTheadSize, sleepMillisMin, sleepMillisMax);
+        // 启动baseTheadSize条线程，每300-500ms获取购获取运力配额(提供地址+购物车数据作为请求信息)
+        // 有运力的话则Api.context.put("multiReserveTimeMap", multiReserveTimeMap)写入上下文中
+        getReserveTimeThread(baseTheadSize, sleepMillisMin, sleepMillisMax);
+        // 启动baseTheadSize条线程，每300-500ms确认订单信息(提供`地址`+`购物车数据`+`运力配额`作为请求信息)
+        // 确认订单信息OK的话则Api.context.put("checkOrderMap", checkOrderMap)写入上下文中
+        checkOrderMapThread(baseTheadSize, sleepMillisMin, sleepMillisMax);
+        // 启动submitOrderTheadSize条线程，每300-500ms获取购获取运力配额(提供地址+购物车数据作为请求信息)
+        // 有运力的话则Api.context.put("multiReserveTimeMap", multiReserveTimeMap)写入上下文中
+        submitOrderThead(submitOrderTheadSize);
+    }
 
-        for (int i = 0; i < baseTheadSize; i++) {
-            new Thread(() -> {
-                while (!Api.context.containsKey("end")) {
-                    Api.allCheck();
-                    //此接口作为补充使用 并不是一定需要 所以执行间隔拉大一点
-                    sleep(RandomUtil.randomInt(3000, 5000));
-                }
-            }).start();
-        }
-
-        for (int i = 0; i < baseTheadSize; i++) {
-            new Thread(() -> {
-                while (!Api.context.containsKey("end")) {
-                    Map<String, Object> cartMap = Api.getCart(noProductsContinue);
-                    if (cartMap != null) {
-                        if (Double.parseDouble(cartMap.get("total_money").toString()) < minOrderPrice) {
-                            System.err.println("订单金额：" + cartMap.get("total_money").toString() + " 不满足最小金额设置：" + minOrderPrice + " 继续重试");
-                        } else {
-                            Api.context.put("cartMap", cartMap);
-                        }
-                    }
-                    sleep(RandomUtil.randomInt(sleepMillisMin, sleepMillisMax));
-                }
-            }).start();
-        }
-        for (int i = 0; i < baseTheadSize; i++) {
-            new Thread(() -> {
-                while (!Api.context.containsKey("end")) {
-                    sleep(RandomUtil.randomInt(sleepMillisMin, sleepMillisMax));
-                    if (Api.context.get("cartMap") == null) {
-                        continue;
-                    }
-                    Map<String, Object> multiReserveTimeMap = Api.getMultiReserveTime(UserConfig.addressId, Api.context.get("cartMap"));
-                    if (multiReserveTimeMap != null) {
-                        Api.context.put("multiReserveTimeMap", multiReserveTimeMap);
-                    }
-                }
-            }).start();
-        }
-        for (int i = 0; i < baseTheadSize; i++) {
-            new Thread(() -> {
-                while (!Api.context.containsKey("end")) {
-                    sleep(RandomUtil.randomInt(sleepMillisMin, sleepMillisMax));
-                    if (Api.context.get("cartMap") == null || Api.context.get("multiReserveTimeMap") == null) {
-                        continue;
-                    }
-                    Map<String, Object> checkOrderMap = Api.getCheckOrder(UserConfig.addressId, Api.context.get("cartMap"), Api.context.get("multiReserveTimeMap"));
-                    if (checkOrderMap != null) {
-                        Api.context.put("checkOrderMap", checkOrderMap);
-                    }
-                }
-            }).start();
-        }
+    private static void submitOrderThead(int submitOrderTheadSize) {
         for (int i = 0; i < submitOrderTheadSize; i++) {
             new Thread(() -> {
-                while (!Api.context.containsKey("end")) {
-                    if (Api.context.get("cartMap") == null || Api.context.get("multiReserveTimeMap") == null || Api.context.get("checkOrderMap") == null) {
+                while (!Api.context.containsKey(END)) {
+                    if (Api.context.get(CART_MAP) == null || Api.context.get(MULTI_RESERVE_TIME_MAP) == null || Api.context.get(CHECK_ORDER_MAP) == null) {
                         continue;
                     }
-                    if (Api.addNewOrder(UserConfig.addressId, Api.context.get("cartMap"), Api.context.get("multiReserveTimeMap"), Api.context.get("checkOrderMap"))) {
+                    if (Api.addNewOrder(UserConfig.addressId, Api.context.get(CART_MAP), Api.context.get(MULTI_RESERVE_TIME_MAP), Api.context.get(CHECK_ORDER_MAP))) {
                         System.out.println("铃声持续1分钟，终止程序即可，如果还需要下单再继续运行程序");
                         Api.play();
                     }
                 }
             }).start();
         }
+    }
+
+    private static void checkOrderMapThread(int baseTheadSize, int sleepMillisMin, int sleepMillisMax) {
+        for (int i = 0; i < baseTheadSize; i++) {
+            new Thread(() -> {
+                while (!Api.context.containsKey(END)) {
+                    sleep(RandomUtil.randomInt(sleepMillisMin, sleepMillisMax));
+                    if (Api.context.get(CART_MAP) == null || Api.context.get(MULTI_RESERVE_TIME_MAP) == null) {
+                        continue;
+                    }
+                    Map<String, Object> checkOrderMap = Api.getCheckOrder(UserConfig.addressId, Api.context.get(CART_MAP), Api.context.get(MULTI_RESERVE_TIME_MAP));
+                    if (checkOrderMap != null) {
+                        Api.context.put(Application.CHECK_ORDER_MAP, checkOrderMap);
+                    }
+                }
+            }).start();
+        }
+    }
+
+    private static void getReserveTimeThread(int baseTheadSize, int sleepMillisMin, int sleepMillisMax) {
+        for (int i = 0; i < baseTheadSize; i++) {
+            new Thread(() -> {
+                while (!Api.context.containsKey(END)) {
+                    sleep(RandomUtil.randomInt(sleepMillisMin, sleepMillisMax));
+                    if (Api.context.get(CART_MAP) == null) {
+                        continue;
+                    }
+                    Map<String, Object> multiReserveTimeMap = Api.getMultiReserveTime(UserConfig.addressId, Api.context.get(CART_MAP));
+                    if (multiReserveTimeMap != null) {
+                        Api.context.put(MULTI_RESERVE_TIME_MAP, multiReserveTimeMap);
+                    }
+                }
+            }).start();
+        }
+    }
+
+    private static void getCartThread(boolean noProductsContinue, double minOrderPrice, int baseTheadSize, int sleepMillisMin, int sleepMillisMax) {
+        for (int i = 0; i < baseTheadSize; i++) {
+            new Thread(() -> {
+                while (!Api.context.containsKey(END)) {
+                    Map<String, Object> cartMap = Api.getCart(noProductsContinue);
+                    if (cartMap != null) {
+                        if (Double.parseDouble(cartMap.get("total_money").toString()) < minOrderPrice) {
+                            System.err.println("订单金额：" + cartMap.get("total_money").toString() + " 不满足最小金额设置：" + minOrderPrice + " 继续重试");
+                        } else {
+                            Api.context.put(CART_MAP, cartMap);
+                        }
+                    }
+                    sleep(RandomUtil.randomInt(sleepMillisMin, sleepMillisMax));
+                }
+            }).start();
+        }
+    }
+
+    private static void allCheckThread(int baseTheadSize) {
+        for (int i = 0; i < baseTheadSize; i++) {
+            new Thread(() -> {
+                while (!Api.context.containsKey(END)) {
+                    Api.allCheck();
+                    //此接口作为补充使用 并不是一定需要 所以执行间隔拉大一点
+                    sleep(RandomUtil.randomInt(3000, 5000));
+                }
+            }).start();
+        }
+    }
+
+    private static void autoStopThread() {
+        Thread autoModifyStatusToEnd = new Thread(() -> {
+            for (int i = 0; i < 120 && !Api.context.containsKey(END); i++) {
+                sleep(1000);
+            }
+            if (!Api.context.containsKey(END)) {
+                Api.context.put(END, new HashMap<>());
+                sleep(3000);
+                System.err.println("未成功下单，执行2分钟自动停止");
+            }
+        });
+        autoModifyStatusToEnd.start();
     }
 }

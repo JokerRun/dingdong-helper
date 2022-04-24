@@ -11,3 +11,5 @@ target/
 *.iml
 *.ipr
 /src/main/resources/properties.properties
+/src/main/resources/properties.rj.properties
+/src/main/resources/properties.lj.properties
